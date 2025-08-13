@@ -232,9 +232,7 @@ function categorizeVoices(voices) {
   return categories;
 }
 
-window.speechSynthesis.onvoiceschanged = () => {
-  voices = window.speechSynthesis.getVoices();
-
+function renderVoiceOptions() {
   // Clear existing options
   voiceSelect.innerHTML = "";
 
@@ -257,7 +255,7 @@ window.speechSynthesis.onvoiceschanged = () => {
       const groupHeader = document.createElement("optgroup");
       groupHeader.label = language;
 
-      categorizedVoices[language].forEach((voiceInfo, index) => {
+      categorizedVoices[language].forEach((voiceInfo) => {
         const option = document.createElement("option");
         option.text = voiceInfo.name;
         option.value = voices.indexOf(voiceInfo.voice);
@@ -268,11 +266,66 @@ window.speechSynthesis.onvoiceschanged = () => {
     });
 
   // Set default voice (first available)
-  if (voices.length > 0) {
+  if (!speech.voice && voices.length > 0) {
     speech.voice = voices[0];
     voiceSelect.value = "0";
   }
-};
+}
+
+function populateVoices() {
+  const available = window.speechSynthesis.getVoices();
+  if (!available || available.length === 0) {
+    return false;
+  }
+  voices = available;
+  renderVoiceOptions();
+  return true;
+}
+
+// Try to populate voices on the 'voiceschanged' event (desktop + some mobile)
+if ("onvoiceschanged" in window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = populateVoices;
+}
+
+// Fallbacks for mobile browsers (iOS/Android) where voices may load late or only after user interaction
+function startVoicesPollingFallback() {
+  let elapsedMs = 0;
+  const pollIntervalMs = 250;
+  const maxWaitMs = 5000;
+  const intervalId = setInterval(() => {
+    elapsedMs += pollIntervalMs;
+    if (populateVoices() || elapsedMs >= maxWaitMs) {
+      clearInterval(intervalId);
+    }
+  }, pollIntervalMs);
+}
+
+function addOneTimeUserInteractionPopulate() {
+  const tryPopulateAndRemove = () => {
+    if (populateVoices()) {
+      ["click", "touchstart", "keydown"].forEach((evt) =>
+        document.removeEventListener(evt, tryPopulateAndRemove, {
+          capture: true,
+        })
+      );
+    }
+  };
+  ["click", "touchstart", "keydown"].forEach((evt) =>
+    document.addEventListener(evt, tryPopulateAndRemove, {
+      capture: true,
+      once: false,
+    })
+  );
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Touch speech engine and attempt early population
+  window.speechSynthesis.getVoices();
+  if (!populateVoices()) {
+    startVoicesPollingFallback();
+    addOneTimeUserInteractionPopulate();
+  }
+});
 
 voiceSelect.addEventListener("change", () => {
   const selectedIndex = voiceSelect.value;
@@ -282,6 +335,11 @@ voiceSelect.addEventListener("change", () => {
 });
 
 document.querySelector("button").addEventListener("click", () => {
+  if ((!voices || voices.length === 0) && !populateVoices()) {
+    // Last-chance attempt on user gesture
+    window.speechSynthesis.getVoices();
+    setTimeout(populateVoices, 100);
+  }
   const text = document.querySelector("textarea").value;
   if (text.trim() === "") {
     alert("Please enter some text to convert to speech.");
