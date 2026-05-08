@@ -160,7 +160,7 @@ This project is licensed under the MIT License.
 
 # 👩‍💻 Author
 
-Developed by Muhammad Hassan Sheikh
+Developed by Musfirah Sheikh
 
 GitHub:
 
